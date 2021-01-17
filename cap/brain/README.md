@@ -1,4 +1,22 @@
-# BRAIN
+# The BRAIN component
+
+**Contents**
+- [Overview](#overview)
+- [Controlling the processing](#controlling-the-processing)
+- [Remote services defined and used](#remote-services-defined-and-used)
+- [Setup required](#setup-required)
+  - [Assumptions](#assumptions)
+  - [Destinations](#destinations)
+  - [Service instances](#service-instances)
+  - [Local service setup](#local-service-setup)
+- [Running it](#running-it)
+  - [Locally](#locally)
+  - [On SAP Cloud Platform - Kyma runtime](#on-sap-cloud-platform---kyma-runtime)
+    - [Build & publish, secrets and deployment](#build--publish-secrets-and-deployment)
+    - [Create and deploy a credentials config map](#create-and-deploy-a-credentials-config-map)
+    - [Check the component is up and running](#check-the-component-is-up-and-running)    
+
+## Overview
 
 This section relates to BRAIN component, the service that coordinates the event messages, subscribes to the "salesorder/created" topic, and publishes event messages to the "Internal/Charityfund/Increased" topic, and is represented by the "BRAIN" block in the whiteboard diagram.
 
@@ -6,31 +24,12 @@ This section relates to BRAIN component, the service that coordinates the event 
 
 This README is quite long, but hopefully useful and interesting. Here's a small table of contents to help you navigate.
 
-- [Overview](#overview)
-- [Controlling the processing](#controlling-the-processing)
-- [Remote services defined and used](#remote-services-defined-and-used)
-- [Setup required](#setup-required)
-  - [Destinations](#destinations)
-  - [Local service setup](#local-service-setup)
-- [Running it](#running-it)
-  - [Locally](#locally)
-  - [On SAP Cloud Platform - Kyma runtime](#on-sap-cloud-platform---kyma-runtime)
-    - [Build a Docker image](#build-a-docker-image)
-    - [Publish the image to a container registry](#publish-the-image-to-a-container-registry)
-    - [Create a k8s secret for registry access](#create-a-k8s-secret-for-registry-access)
-    - [Create and deploy a credentials config map](#create-and-deploy-a-credentials-config-map)
-
-
-
-
-## Overview
-
-The brain is a basic CAP application with two of the three layers in use. In effect, a "service" more than an application:
+The BRAIN component is a basic CAP application with two of the three layers in use. In effect, a "service" more than an application:
 
 |Layer|Description|
 |-|-|
 |`app`|Unused|
-|`srv`|A single service `teched` is defined exposing an entity `CharityEntry`. Custom JavaScript code for managing the Brain's operations and activities|
+|`srv`|A single service `teched` is defined exposing an entity `CharityEntry`. Custom JavaScript code for managing the BRAIN's operations and activities|
 |`db`|An entity `CharityEntry` is defined with a `SoldToParty` property as key, and a counter property. This entity is defined within the namespace `charity`|
 
 The service, once deployed, does not require any human intervention to function. Processing follows a sequence of the following activities, each time an event published to the "salesorder/created" topic on the message bus is received; each activity is denoted by a "level" number (1 through 4):
@@ -38,9 +37,9 @@ The service, once deployed, does not require any human intervention to function.
 1. Log the message details
 1. Retrieve sales order header details from the OData service `API_SALES_ORDER_SRV` proxied by the SANDBOX component
 1. Request a conversion of the total net amount of the sales order to the equivalent in charity fund credits, by calling the CONVERTER component\*
-1. Publish a new event to the "Internal/Charityfund/Increased" topic
+1. Publish a new event to the "Internal/Charityfund/Increased" topic\*
 
-_\*This is as long as sold-to party is one that hasn't already been processed 10 times before_
+_\*This is as long as the sold-to party is one that hasn't already been processed 10 times before_
 
 ## Controlling the processing
 
@@ -62,20 +61,52 @@ In carrying out the activities listed above, the CAP service consumes the follow
 
 ## Setup required
 
-You'll need to set a few things up in preparation for getting this component up and running. These instructions assume you've cloned your forked copy of this repository, as described in the [Download and installation section](../../README.md#download-and-installation) of the main repository README. The GitHub username in the examples in this README is 'qmacro' - you should replace this with your own GitHub username.
+You'll need to set a few things up in preparation for getting this component up and running. 
+
+### Assumptions
+
+These instructions assume you've cloned your forked copy of this repository, as described in the [Download and installation section](../../README.md#download-and-installation) of the main repository README. The GitHub username in the examples in this README is 'qmacro' - you should replace this with your own GitHub username. 
+
+It also assumes you've opted to use the SAP Business Application Studio (App Studio) for your development environment and have followed the setup instructions in [Using the SAP Business Application Studio](/usingappstudio/). Prompts shown in examples in this README will reflect the prompt style in the terminal of an App Studio Dev Space (showing the username, current directory, and so on).
+
+Finally it also assumes you've already set up the message bus, an instance of the SAP Enterprise Messaging service, following the instructions in [Message bus setup](../../messagebus/).
 
 ### Destinations
 
-As mentioned above, there are some destinations at play here, destinations that point to the `S4SalesOrders` and `ConversionService` endpoints. Set those up now, following the [Destinations setup](destinations.md) instructions.
+As mentioned above, there are some destinations at play here. Two, in fact, pointing to:
+
+- the `S4SalesOrders` endpoint, required for BRAIN_LEVEL 2
+- the `ConversionService` endpoint, required for BRAIN_LEVEL 3
+
+If you're just starting out, and only want to get the BRAIN component up and running at BRAIN_LEVEL 1 for now, you can leave the destinations setup until you're ready. Otherwise, set these destinations up now, following the [Destinations setup](destinations.md) instructions.
+
+### Service instances
+
+In addition to an instance of the SAP Enterprise Messaging service, the BRAIN component requires access to instances of another couple of services:
+
+- the Destination service
+- the Authorization & Trust Management service (otherwise known as XSUAA)
+
+These services are to enable the reading of those two destination definitions (for the `S4SalesOrders` and `ConversionService` endpoints) that you've just created in the previous section.
+
+Set up these services now following the [Service instances setup](serviceinstances.md) instructions.
 
 ### Local service setup
 
 The best way to get this component up and running is to start locally. So now is a good point to set things up for local execution. This is a CAP based service, which relies on certain NPM modules (see the `dependencies` and `devDependencies` nodes in [`package.json`](package.json) and a local SQLite-powered persistence layer (see the `cds -> requires -> db` node in the same file).
 
-In this (`cap/brain/`) directory, first get the modules installed by running `npm install`. This is the sort of thing you should see:
+First, ensure you're in this (`cap/brain/`) directory:
+
+```bash
+user: teched2020-developer-keynote $ cd cap/brain/
+user: brain $ pwd
+/home/user/projects/teched2020-developer-keynote/cap/brain
+```
+
+Next, get the modules installed by running `npm install`. This is the sort of thing you should see:
 
 ```
-$ npm install
+user: brain $ npm install
 
 > @sap/hana-client@2.6.54 install /private/tmp/teched2020-developer-keynote/cap/brain/node_modules/@sap/hana-client
 > node checkbuild.js
@@ -100,7 +131,7 @@ found 0 vulnerabilities
 Now run `cds deploy` to cause the persistence layer artifact (the SQLite database file) to be summoned into existence (note that there are a few test records in the CSV file):
 
 ```
-$ cds deploy
+user: brain $ cds deploy
  > filling charity.CharityEntry from db/csv/charity-CharityEntry.csv
 /> successfully deployed to ./brain.db
 ```
@@ -122,7 +153,7 @@ Because of what this contains, it is not normally included in any repository for
 At this point, you can start the service running locally with `cds run`, shown here with typical output (with some lines removed for readability):
 
 ```
-$ cds run
+user: brain $ cds run
 
 [cds] - model loaded from 3 file(s):
 
@@ -181,6 +212,12 @@ BRAIN_LEVEL set to 1
 [cds] - Add subscription { topic: 'salesorder/created', queue: 'CAP/0000' }
 ```
 
+Before we start to examine the output, if you're in Dev Space from your App Studio based development environment, the fact that a process has started listening on host `localhost` port `4004` will have caused App Studio to prompt you with a message offering you the possibility of exposing this so that you can access the service from your browser:
+
+![port message](port-4004-message.png)
+
+Select the "Expose and Open" button (you may be subsequently prompted to add a description). Once you've seen the contents of the web page, flip back to your browser tab where you have your Dev Space, to look at the output of `cds run`.
+
 In that output, observe how the CAP messaging support automatically connects to the message bus (the instance of the SAP Enterprise Messaging service) and, in order to subscribe to the "salesorder/created" topic, creates a queue "CAP/0000" and a queue subscription, connecting that "CAP/0000" queue to the "salesorder/created" topic:
 
 ```
@@ -204,7 +241,7 @@ This is directly related to the activity level described earlier in the [Control
 At this point, you should leave this CAP service running, and (say, in a new terminal window) jump over to your [EMITTER](../../s4hana/event) component, set that up (if you haven't got it set up already) and emit a "salesorder/created" event message. Look in particular at the [Usage](../../s4hana/event/README.md#usage) section for hints on how to do this. Emit an event message for a sales order (e.g. 1) - the invocation and output should look something like this:
 
 ```
-$ ./emit 1
+user: event $ ./emit 1
 2020-12-07 13:48:59 Publishing sales order created event for 1
 2020-12-07 13:48:59 Publish message to topic salesorder%2Fcreated
 ```
@@ -263,7 +300,7 @@ For example, if you've got the [SANDBOX](../../s4hana/sandbox) component set up 
 This is how you'd do that - basically you can specify the value for `BRAIN_LEVEL`, while restarting the service, this time giving an explicit value for the variable, like this:
 
 ```sh
-$ BRAIN_LEVEL=2 cds run
+user: brain $ BRAIN_LEVEL=2 cds run
 ```
 
 In the other terminal window, emitting another event message in the same way (`./emit 1`) should result in not only the logging of the event message received, but also the results of the sales order information retrieval described (in the [overview](#overview)) as what happens at `BRAIN_LEVEL` 2.
@@ -281,7 +318,17 @@ SalesOrder number is 1
 SalesOrder details retrieved {"SalesOrder":"1","SalesOrganization":"1710","SoldToParty":"17100001","CreationDate":"/Date(1471392000000)/","TotalNetAmount":"52.65"}
 ```
 
-Observe that this time, not only is the event message logged ("Message received { ... }") but also a connection is made to the `S4SalesOrders` endpoint and header data is retrieved for the sales order number sent in the event message (1).
+Observe that this time, not only is the event message logged ("Message received { ... }") but also a connection is made to the `S4SalesOrders` endpoint and header data is retrieved for the sales order number sent in the event message (1). This header data is in JSON format, and pretty-printed, looks like this:
+
+```json
+{
+  "SalesOrder": "1",
+  "SalesOrganization": "1710",
+  "SoldToParty": "17100001",
+  "CreationDate": "/Date(1471392000000)/",
+  "TotalNetAmount": "52.65"
+}
+```
 
 **Testing BRAIN_LEVEL 3**
 
@@ -290,7 +337,7 @@ Once you also have the [CONVERTER](../../kyma) component up and active in the Ky
 Restart the service, this time specifying 3 as the `BRAIN_LEVEL` value:
 
 ```sh
-$ BRAIN_LEVEL=3 cds run
+user: brain $ BRAIN_LEVEL=3 cds run
 ```
 
 As before, emit another event message in the other terminal window, and check the log output from this CAP service. In addition to the messages we've already seen for `BRAIN_LEVEL` 1 and 2, you should now also see something like this:
@@ -309,7 +356,7 @@ This shows that the CAP service successfully connected to the RESTful endpoint o
 Finally you can test `BRAIN_LEVEL` 4, which causes an event message to be created and published to the message bus, specifically on the topic "Internal/Charityfund/Increased". Because there's no further service upon which the CAP service relies for this, you can go ahead straight away after `BRAIN_LEVEL` 3 and test it:
 
 ```sh
-$ BRAIN_LEVEL=4 cds run
+user: brain $ BRAIN_LEVEL=4 cds run
 ```
 
 After emitting one more event message in the other terminal window, you should see extra log messages for this new `BRAIN_LEVEL` 4, something like this:
@@ -343,121 +390,23 @@ Once you've reached this stage, you should set the `BRAIN_LEVEL` value permanent
 
 ### On SAP Cloud Platform - Kyma runtime
 
-Well done to making it this far in the README :-) Now we've successfully got the service running locally, we'll go directly to a deployment to the Kyma runtime. (If you're interested in how you might also run a service locally in Docker, and also on CF, see how we do it for the [SANDBOX](../../s4hana/sandbox) component.)
+Well done to making it this far in the README! 
 
-There are a number of steps to get the app running in Kyma, i.e. on k8s:
+Now we've successfully got the service running locally, we'll go directly to a deployment to the Kyma runtime. (If you're interested in how you might also run a service on CF, see how we do it for the [SANDBOX](../../s4hana/sandbox) component.)
 
-- build a Docker image for the app
-- publish the image to a container registry
-- create a k8s secret for registry access
-- make a deployment to Kyma
+This BRAIN component has something in common with the [SANDBOX](../../s4hana/sandbox) and [CONVERTER](../../kyma) components ... and that is that the Kyma runtime was where each of them was running in the actual [Developer Keynote](https://events.sapteched.com/widget/sap/sapteched2020/Catalog/session/1603314875989001AsWU). And the process for getting the component up and running in the Kyma runtime is the same each time. 
 
-These are the same steps required for the [SANDBOX](../../s4hana/sandbox#on-sap-cloud-platform---kyma-runtime) component.
+#### Build & publish, secrets and deployment
 
-There's one more step for this component, too:
+Because the process is common, you can find it described in a separate (and therefore shared) document - [Getting a component up and running on the Kyma runtime](../../kymaruntime/). Head on over to that document now, and follow the instructions, bearing in mind that you're building the BRAIN component. Come back here when you're done, because there's an extra step required for this BRAIN component, which we can do when you return. 
+
+#### Create and deploy a credentials config map
+
+OK. Welcome back. In addition to the steps described in [Getting a component up and running on the Kyma runtime](../../kymaruntime.md), there's one more step for this BRAIN component, too:
 
 - create and deploy a credentials config map containing the access credentials for the services that the brain connects to
 
-Unlike the SANDBOX component, this component connects to and consumes various services, as you know. The credentials to make this possible have been in the `default-env.json` file, but we shouldn't include those credentials in any app image that is to be deployed. There are a couple of reasons that come to mind immediately: we should always avoid exposing such information in images especially when publishing them to a public registry, and also, we want to be able to manage the lifecycle of credentials independent of the app or service that uses them - otherwise we'd end up having to rebuild the app image each time.
-
-The first four steps, being similar to those for the [SANDBOX](../../s4hana/sandbox) component, will be described briefly and can be performed using the [`d`](d) script in this directory.
-
-This is an enhanced version of the `d` script in the SANDBOX component directory, and the two versions will eventually be merged. Check the options and actions out before you start, like this:
-
-```
-$ ./d
-
-Usage: d <options> <action>
-
-with options:
--a | --app <app location>
--p | --package <package name>
--u | --user <GitHub username>
--r | --repository <GitHub repository>
-
-with actions:
-login: login to GitHub Packages
-build: create the Docker image (needs -a, -p, -u and -r)
-run: run a container locally based on the image (needs -p, -u and -r)
-publish: publish the image to GitHub (needs -p, -u and -r)
-```
-
-#### Build a Docker image
-
-First, build the image containing the CAP brain service, using the `d` script like this (typical output shown here too):
-
-```
-$ ./d -a . -p brain -u qmacro -r teched2020-developer-keynote build
-Building image for .
-[+] Building 1.3s (10/10) FINISHED
- => [internal] load build definition from Dockerfile
- => => transferring dockerfile: 35B
- => [internal] load .dockerignore
- => => transferring context: 153B
- => [internal] load metadata for docker.io/library/node:12.18.1
- => [1/5] FROM docker.io/library/node:12.18.1@sha256:2b85f4981f92ee034b51a3
- => [internal] load build context
- => => transferring context: 1.15kB
- => CACHED [2/5] WORKDIR /usr/src/app
- => CACHED [3/5] COPY /package*.json ./
- => CACHED [4/5] RUN npm install
- => CACHED [5/5] COPY /. .
- => exporting to image
- => => exporting layers
- => => writing image sha256:1a97caa868ef28bba069df2ffe447a6bbe99495265cc
- => => naming to docker.pkg.github.com/qmacro/teched2020-developer-keynote/brain:latest
-```
-
-#### Publish the image to a container registry
-
-Next, publish this newly built image to the GitHub container registry. Again, you can use the `d` script, first to authenticate with the registry, then to actually publish the image there.
-
-Authenticate:
-
-```
-$ ./d login
-Authenticating with GitHub Packages
-Enter username: <YOUR GITHUB ORG/USERNAME>
-Enter password / token: <ACCESS TOKEN>
-Login Succeeded
-```
-
-> See the [equivalent section for the SANDBOX component](../../s4hana/sandbox#publish-the-image-to-a-container-registry) for information on how to obtain and use a token.
-
-Publish:
-
-```
-$ ./d -p brain -u qmacro -r teched2020-developer-keynote publish
-Publishing image to GitHub Packages
-The push refers to repository [docker.pkg.github.com/qmacro/teched2020-developer-keynote/brain]
-fd3bf7c5138e: Pushed
-...
-23bca356262f: Layer already exists
-8354d5896557: Layer already exists
-latest: digest: sha256:36949f0cdd5ee9503684152ebc0c1c851ca
-```
-
-#### Create a k8s secret for registry access
-
-You need to give the Kyma runtime the credentials to be able to pull the image from the registry you published the image to. You can do this with the [`k`](k) script.
-
-> If you've already completed the setup and deployment of other components such as the [SANDBOX](../../s4hana/sandbox) then this is probably already set up - check with `kubectl get secrets` and have a quick look at the [section equivalent to this one over there](s4hana/sandbox#create-a-k8s-secret-for-registry-access).
-
-Create the secret:
-
-```
-$ ./k secret
-Setting up docker-registry secret regcred for access to https://docker.pkg.github.com
-Secret regcred exists - will remove first (hit enter to continue)
-secret "regcred" deleted
-Enter email: <YOUR GITHUB EMAIL>
-Enter username: <YOUR GITHUB ORG/USERNAME>
-Enter password / token: <ACCESS TOKEN>
-secret/regcred created
-```
-
-
-#### Create and deploy a credentials config map
+Unlike the SANDBOX and CONVERTER components, this component connects to and consumes various services, as you know. The credentials to make this possible have been in the `default-env.json` file, but we shouldn't include those credentials in any app image that is to be deployed. There are a couple of reasons that come to mind immediately: we should always avoid exposing such information in images especially when publishing them to a public registry, and also, we want to be able to manage the lifecycle of credentials independent of the app or service that uses them - otherwise we'd end up having to rebuild the app image each time.
 
 This is where the deployment to Kyma differs from that of the [SANDBOX](../../s4hana/sandbox) component; this is the extra step mentioned above. If you take a look in the [`deployment.yaml`](deployment.yaml) file in this directory, you'll see a section like this:
 
@@ -469,27 +418,19 @@ envFrom:
 
 This refers to the config map that we're about to create in this step, containing the same `VCAP_SERVICES` environment variable based access credentials as earlier.
 
-Providing you already have the `default-env.json` file (if you've already run the CAP brain service locally, you will have), you can create the config map and deploy it in a single step, again using the `k` script. Here's an example invocation:
+You'll need a `default-env.json` file. If you've already run the CAP brain service locally, you will have it. If not, follow the instructions in [Generating a default-env.json file](default-env-gen.md) before continuing.
+
+You can create the config map and deploy it in a single step, again using the `k` script. Here's an example invocation:
 
 ```
-$ ./k configmap
+user: brain $ ./k configmap
 Creating and deploying config map to k8s
 configmap/appconfigcap configured
 ```
 
-#### Make a deployment to Kyma
+#### Check the component is up and running
 
-Now everything is ready for the deployment to Kyma. The credentials are stored there now in a config map, there are registry credentials (for the GitHub container registry) stored as a secret, and the image is there in GitHub ready to be pulled into k8s. The deployment is described in the [`deployment.yaml`](deployment.yaml) file, and can be invoked with the `k` script like this:
-
-```
-$ ./k -u qmacro -r teched2020-developer-keynote deploy
-Deploying to k8s
-deployment.apps/brain created
-service/brain created
-apirule.gateway.kyma-project.io/brain created
-```
-
-Well done! At this stage, you should have the CAP brain service deployed to and running in the Kyma runtime in your SAP Cloud Platform trial account. If you check the Deployments in the Kyma console you might see something similar to this, where this `brain` component is deployed, along with others (`s4mock` and `calc-service` in this example):
+Well done! At this stage, you should have the BRAIN component deployed to and running in the Kyma runtime in your SAP Cloud Platform trial account. If you check the Deployments in the Kyma console you might see something similar to this, where this BRAIN component (package name `brain`) is deployed, along with others (`s4mock` and `calc-service` in this example):
 
 ![The CAP brain service deployed to the Kyma runtime](brain-deployed.png)
 

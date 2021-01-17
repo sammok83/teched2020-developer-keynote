@@ -26,6 +26,7 @@ spec:
       containers:
       # replace the repository URL with your own repository (e.g. {DockerID}/http-db-service:0.0.x for Docker Hub).
       - image: docker.pkg.github.com/sammok83/teched2020-developer-keynote/s4mock:latest
+
         imagePullPolicy: Always
         name: s4mock
         ports:
